@@ -1,9 +1,8 @@
 <template>
 	<view class="container">
 		<view class="header">
-			<text class="title">小车控制器</text>
+			<text class="title">   </text>
 		</view>
-		
 		<view class="button-list">
 			<view class="btn-item" @click="goToBluetooth">
 				<view class="btn-icon">
@@ -109,12 +108,14 @@
 	
 	.button-list {
 		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
+		flex-direction: column;
+		align-items: center;
+		padding: 0 60rpx;
 	}
 	
 	.btn-item {
-		width: calc(50% - 20rpx);
+		width: 100%;
+		max-width: 560rpx;
 		background: rgba(255,255,255,0.95);
 		border-radius: 24rpx;
 		padding: 40rpx 20rpx;

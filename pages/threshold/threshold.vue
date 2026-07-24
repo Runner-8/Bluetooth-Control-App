@@ -1,14 +1,6 @@
 c:\uni-app_Project\test01_7_22\pages\threshold\threshold.vue
 <template>
 	<view class="container">
-		<view class="nav-bar">
-			<view class="back-btn" @click="goBack">
-				<text class="back-icon">←</text>
-			</view>
-			<text class="nav-title">阈值设置</text>
-			<view class="placeholder"></view>
-		</view>
-		
 		<view class="content">
 			<view class="setting-item">
 				<text class="label">重量阈值</text>
@@ -44,10 +36,6 @@ c:\uni-app_Project\test01_7_22\pages\threshold\threshold.vue
 			}
 		},
 		methods: {
-			goBack() {
-				uni.navigateBack()
-			},
-			
 			confirmThreshold() {
 				if (!this.threshold || isNaN(this.threshold)) {
 					uni.showToast({
@@ -82,42 +70,15 @@ c:\uni-app_Project\test01_7_22\pages\threshold\threshold.vue
 		background: #f5f5f5;
 	}
 	
-	.nav-bar {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
+	.content {
 		padding: 40rpx 30rpx;
-		background: #fff;
-		box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.1);
 	}
 	
-	.back-btn {
-		width: 80rpx;
-		height: 80rpx;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: #f0f0f0;
-		border-radius: 50%;
-	}
-	
-	.back-icon {
-		font-size: 40rpx;
-		color: #333;
-	}
-	
-	.nav-title {
+	.page-title {
 		font-size: 36rpx;
 		font-weight: bold;
 		color: #333;
-	}
-	
-	.placeholder {
-		width: 80rpx;
-	}
-	
-	.content {
-		padding: 40rpx 30rpx;
+		margin-bottom: 40rpx;
 	}
 	
 	.setting-item {
