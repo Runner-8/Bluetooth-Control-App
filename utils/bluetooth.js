@@ -1,3 +1,4 @@
+
 class BluetoothManager {
 	constructor() {
 		this.connectedDevice = null
@@ -5,8 +6,8 @@ class BluetoothManager {
 		this.isConnected = false
 		this.listeners = []
 		this.connectionType = null
-		this.sendQueue = [] // ·¢ËÍ¶ÓÁĞ
-		this.isSending = false // ÊÇ·ñÕıÔÚ·¢ËÍ
+		this.sendQueue = []
+		this.isSending = false
 	}
 	
 	setConnectedDevice(device, type = 'classic') {
@@ -46,28 +47,46 @@ class BluetoothManager {
 		})
 	}
 	
-	// ·¢ËÍÊı¾İ£¨Ìí¼Ó½áÊø·ûºÍ·¢ËÍ¼ä¸ô£©
 	sendData(data) {
 		return new Promise((resolve, reject) => {
 			if (!this.connectedDevice) {
-				reject(new Error('Î´Á¬½ÓÉè±¸'))
+				reject(new Error('æœªè¿æ¥è®¾å¤‡'))
 				return
 			}
 			
-			// Ìí¼Ó»»ĞĞ·û×÷Îª½áÊø·û
-			const dataWithEnd = data + '\n'
+			// ç¡®ä¿æ•°æ®æ˜¯ ArrayBuffer
+			let sendData = data
+			if (!(data instanceof ArrayBuffer)) {
+				// å¦‚æœæ˜¯å­—ç¬¦ä¸²ï¼Œè½¬æ¢ä¸º ArrayBuffer
+				if (typeof data === 'string') {
+					const buffer = new ArrayBuffer(data.length)
+					const view = new DataView(buffer)
+					for (let i = 0; i < data.length; i++) {
+						view.setUint8(i, data.charCodeAt(i))
+					}
+					sendData = buffer
+				} else if (Array.isArray(data)) {
+					// å¦‚æœæ˜¯æ•°ç»„ï¼Œè½¬æ¢ä¸º ArrayBuffer
+					const buffer = new ArrayBuffer(data.length)
+					const view = new DataView(buffer)
+					for (let i = 0; i < data.length; i++) {
+						view.setUint8(i, data[i])
+					}
+					sendData = buffer
+				} else {
+					reject(new Error('æ— æ•ˆçš„æ•°æ®æ ¼å¼'))
+					return
+				}
+			}
 			
-			// Ìí¼Óµ½·¢ËÍ¶ÓÁĞ
-			this.sendQueue.push({ data: dataWithEnd, resolve, reject })
+			this.sendQueue.push({ data: sendData, resolve, reject })
 			
-			// Èç¹û²»ÔÚ·¢ËÍÖĞ£¬¿ªÊ¼´¦Àí¶ÓÁĞ
 			if (!this.isSending) {
 				this.processQueue()
 			}
 		})
 	}
 	
-	// ´¦Àí·¢ËÍ¶ÓÁĞ
 	async processQueue() {
 		if (this.sendQueue.length === 0) {
 			this.isSending = false
@@ -79,20 +98,18 @@ class BluetoothManager {
 		
 		try {
 			await this.sendSingleData(item.data)
-			console.log('·¢ËÍ³É¹¦:', item.data.trim())
+			console.log('å‘é€æˆåŠŸ:', this.bytesToHex(item.data))
 			item.resolve()
 		} catch (err) {
-			console.error('·¢ËÍÊ§°Ü:', err)
+			console.error('å‘é€å¤±è´¥:', err)
 			item.reject(err)
 		}
 		
-		// ·¢ËÍ¼ä¸ô50ms£¬·ÀÖ¹Êı¾İÕ³°ü
 		setTimeout(() => {
 			this.processQueue()
-		}, 50)
+		}, 30)
 	}
 	
-	// ·¢ËÍµ¥ÌõÊı¾İ
 	sendSingleData(data) {
 		return new Promise((resolve, reject) => {
 			if (this.connectionType === 'classic' && this.socket) {
@@ -102,9 +119,79 @@ class BluetoothManager {
 					fail: (err) => reject(new Error(err.errMsg))
 				})
 			} else {
-				reject(new Error('ÎŞ·¨·¢ËÍÊı¾İ'))
+				reject(new Error('æ— æ³•å‘é€æ•°æ®'))
 			}
 		})
+	}
+	
+	buildFrame(cmd, data = []) {
+		const FRAME_HEADER = 0xAA
+		const FRAME_TAIL = 0x55
+		
+		const length = 1 + data.length + 1
+		
+		let checksum = length ^ cmd
+		for (let byte of data) {
+			checksum ^= byte
+		}
+		
+		const frame = [FRAME_HEADER, length, cmd, ...data, checksum, FRAME_TAIL]
+		
+		const buffer = new ArrayBuffer(frame.length)
+		const view = new DataView(buffer)
+		for (let i = 0; i < frame.length; i++) {
+			view.setUint8(i, frame[i])
+		}
+		
+		return buffer
+	}
+	
+	floatToBytes(value) {
+		const buffer = new ArrayBuffer(4)
+		const view = new DataView(buffer)
+		view.setFloat32(0, value, true)
+		return [
+			view.getUint8(0),
+			view.getUint8(1),
+			view.getUint8(2),
+			view.getUint8(3)
+		]
+	}
+	
+	bytesToHex(bytes) {
+		if (bytes instanceof ArrayBuffer) {
+			bytes = new Uint8Array(bytes)
+		}
+		return Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')
+	}
+	
+	sendCommand(cmdType, data = []) {
+		const cmdMap = {
+			forward: 0x01,
+			backward: 0x02,
+			left: 0x03,
+			right: 0x04,
+			stop: 0x05,
+			autoCruise: 0x06,
+			setThreshold: 0x07,
+			queryStatus: 0x08
+		}
+		
+		const cmd = cmdMap[cmdType]
+		if (!cmd) {
+			return Promise.reject(new Error('æœªçŸ¥å‘½ä»¤ç±»å‹'))
+		}
+		
+		let frameData = data
+		
+		if (cmdType === 'setThreshold' && typeof data === 'number') {
+			frameData = this.floatToBytes(data)
+		} else if (cmdType === 'autoCruise' && typeof data === 'boolean') {
+			frameData = [data ? 0x01 : 0x00]
+		}
+		
+		const frame = this.buildFrame(cmd, frameData)
+		return this.sendData(frame)
 	}
 	
 	disconnect() {

@@ -5,14 +5,26 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 			<view class="action-btn" :class="{ scanning: scanning }" @click="toggleScan">
 				<text class="action-text">{{ scanning ? '停止扫描' : '开始扫描' }}</text>
 			</view>
+			<view class="refresh-btn" @click="refreshDevices">
+				<text class="refresh-icon">🔄</text>
+			</view>
 		</view>
 		
 		<view class="mode-tip" v-if="!isAppMode">
 			<text class="tip-icon">⚠️</text>
-			<text class="tip-text">当前为H5模式，经典蓝牙功能不可用，请使用App模式测试</text>
+			<text class="tip-text">当前为H5模式，蓝牙功能不可用，请使用App模式测试</text>
 		</view>
 		
-		<view class="scan-status" v-if="scanning">
+		<view class="error-panel" v-if="bluetoothError">
+			<text class="error-icon">❌</text>
+			<text class="error-title">蓝牙不可用</text>
+			<text class="error-desc">{{ bluetoothError }}</text>
+			<view class="error-btn" @click="retryBluetooth">
+				<text class="btn-text">重试</text>
+			</view>
+		</view>
+		
+		<view class="scan-status" v-else-if="scanning">
 			<view class="loading-dot">
 				<view class="dot"></view>
 				<view class="dot"></view>
@@ -22,7 +34,7 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 		</view>
 		
 		<view class="device-list" v-else>
-			<view v-if="devices.length === 0" class="empty-state">
+			<view v-if="devices.length === 0 && !globalConnectedDevice" class="empty-state">
 				<text class="empty-icon">📶</text>
 				<text class="empty-text">暂无蓝牙设备</text>
 				<text class="empty-hint">请确保蓝牙设备已进入可发现模式</text>
@@ -35,9 +47,6 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 				<view class="device-detail">
 					<text class="device-name">{{ getDeviceName(device) }}</text>
 					<text class="device-mac">{{ device.deviceId }}</text>
-					<text class="device-type" v-if="isJDYDevice(device)">
-						⚠️ 经典蓝牙设备（需App模式）
-					</text>
 				</view>
 				<view class="device-action">
 					<view v-if="!device.connected" class="connect-btn" @click="connectDevice(device)">
@@ -68,51 +77,67 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 				scanTimer: null,
 				globalConnectedDevice: null,
 				connectionType: null,
-				isAppMode: false
+				isAppMode: false,
+				bluetoothError: ''
 			}
 		},
 		onLoad() {
-			//#ifdef APP-PLUS
-			this.isAppMode = true
-			//#endif
-			
-			this.globalConnectedDevice = bluetoothManager.getConnectedDevice()
-			this.connectionType = bluetoothManager.getConnectionType()
-			bluetoothManager.addListener(this.onConnectionChange)
-			
-			if (this.globalConnectedDevice) {
-				this.updateConnectedDeviceStatus()
-			}
-			
-			this.startScan()
+			this.initPage()
+		},
+		onShow() {
+			this.updateConnectionStatus()
 		},
 		onUnload() {
 			this.stopScan()
 			bluetoothManager.removeListener(this.onConnectionChange)
 		},
 		methods: {
+			initPage() {
+				//#ifdef APP-PLUS
+				this.isAppMode = true
+				//#endif
+				
+				this.globalConnectedDevice = bluetoothManager.getConnectedDevice()
+				this.connectionType = bluetoothManager.getConnectionType()
+				bluetoothManager.addListener(this.onConnectionChange)
+				
+				if (!this.isAppMode) {
+					this.bluetoothError = 'H5模式不支持蓝牙功能，请使用App模式测试'
+					return
+				}
+				
+				this.startScan()
+			},
+			
+			updateConnectionStatus() {
+				this.globalConnectedDevice = bluetoothManager.getConnectedDevice()
+				this.connectionType = bluetoothManager.getConnectionType()
+				
+				// 如果已有连接，确保已连接设备在列表中显示
+				if (this.globalConnectedDevice && !this.devices.some(d => d.deviceId === this.globalConnectedDevice.deviceId)) {
+					this.devices.unshift({
+						name: this.globalConnectedDevice.name,
+						deviceId: this.globalConnectedDevice.deviceId,
+						connected: true
+					})
+				}
+				
+				// 更新所有设备的连接状态
+				this.devices.forEach(device => {
+					device.connected = this.globalConnectedDevice && 
+						(device.deviceId === this.globalConnectedDevice.deviceId)
+				})
+			},
+			
 			onConnectionChange(device, isConnected) {
 				this.globalConnectedDevice = device
 				this.connectionType = bluetoothManager.getConnectionType()
-				if (device) {
-					this.updateConnectedDeviceStatus()
-				} else {
-					this.devices.forEach(d => d.connected = false)
-				}
+				this.updateConnectionStatus()
 			},
 			
-			updateConnectedDeviceStatus() {
-				if (this.globalConnectedDevice) {
-					this.devices.forEach(device => {
-						if (device.deviceId === this.globalConnectedDevice.deviceId) {
-							device.connected = true
-						}
-					})
-				}
-			},
-			
-			isJDYDevice(device) {
-				return device.name && (device.name.includes('JDY') || device.name.includes('HC-'))
+			refreshDevices() {
+				if (!this.isAppMode) return
+				this.startScan()
 			},
 			
 			getDeviceName(device) {
@@ -129,6 +154,11 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 				return '未知设备'
 			},
 			
+			retryBluetooth() {
+				this.bluetoothError = ''
+				this.startScan()
+			},
+			
 			toggleScan() {
 				if (this.scanning) {
 					this.stopScan()
@@ -140,6 +170,16 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 			startScan() {
 				this.scanning = true
 				this.devices = []
+				this.bluetoothError = ''
+				
+				// 如果已有连接，先添加已连接设备
+				if (this.globalConnectedDevice) {
+					this.devices.push({
+						name: this.globalConnectedDevice.name,
+						deviceId: this.globalConnectedDevice.deviceId,
+						connected: true
+					})
+				}
 				
 				uni.openBluetoothAdapter({
 					success: () => {
@@ -170,15 +210,22 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 					},
 					fail: (err) => {
 						console.error('蓝牙适配器打开失败:', err)
-						this.handleError(err)
-						this.scanning = false
+						this.handleAdapterError(err)
 					}
 				})
 			},
 			
 			addDevice(device) {
 				const exists = this.devices.some(d => d.deviceId === device.deviceId)
-				if (exists) return
+				if (exists) {
+					// 更新已存在设备的信息
+					this.devices.forEach(d => {
+						if (d.deviceId === device.deviceId) {
+							d.name = device.name
+						}
+					})
+					return
+				}
 				
 				const newDevice = {
 					name: device.name,
@@ -206,17 +253,25 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 				})
 			},
 			
+			handleAdapterError(err) {
+				this.scanning = false
+				
+				if (err.code === 10001) {
+					this.bluetoothError = '蓝牙适配器不可用，请检查设备蓝牙是否正常'
+				} else if (err.code === 10012) {
+					this.bluetoothError = '蓝牙未开启，请在系统设置中开启蓝牙'
+				} else if (err.code === 10003) {
+					this.bluetoothError = '蓝牙权限未授予，请在系统设置中授予权限'
+				} else {
+					this.bluetoothError = err.errMsg || '蓝牙初始化失败'
+				}
+			},
+			
 			handleError(err) {
 				if (err.code === 10016) {
 					uni.showModal({
 						title: '位置服务未开启',
 						content: '请在系统设置中开启位置服务',
-						showCancel: false
-					})
-				} else if (err.code === 10012) {
-					uni.showModal({
-						title: '蓝牙未开启',
-						content: '请在系统设置中开启蓝牙',
 						showCancel: false
 					})
 				} else {
@@ -233,63 +288,12 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 					return
 				}
 				
-				// JDY设备需要App模式
-				if (this.isJDYDevice(device) && !this.isAppMode) {
-					uni.showModal({
-						title: '需要App模式',
-						content: 'JDY设备需要在App模式下使用经典蓝牙连接',
-						showCancel: false
-					})
-					return
+				if (this.globalConnectedDevice) {
+					this.disconnectDevice(this.globalConnectedDevice)
 				}
 				
 				uni.showLoading({ title: '连接中...' })
-				
-				if (this.isJDYDevice(device)) {
-					this.connectClassicBluetooth(device)
-				} else {
-					this.connectBLE(device)
-				}
-			},
-			
-			connectClassicBluetooth(device) {
-				//#ifdef APP-PLUS
-				if (uni.createBluetoothSocket) {
-					const socket = uni.createBluetoothSocket({ deviceId: device.deviceId })
-					
-					socket.onOpen(() => {
-						console.log('经典蓝牙连接成功')
-						device.connected = true
-						bluetoothManager.setConnectedDevice(device, 'classic')
-						bluetoothManager.setSocket(socket)
-						uni.hideLoading()
-						uni.showToast({ title: '连接成功', icon: 'success' })
-						
-						socket.onMessage((res) => {
-							console.log('收到数据:', res)
-						})
-						
-						socket.onClose(() => {
-							console.log('连接已断开')
-							device.connected = false
-							bluetoothManager.disconnect()
-						})
-					})
-					
-					socket.onError((err) => {
-						console.error('经典蓝牙连接失败:', err)
-						uni.hideLoading()
-						uni.showToast({ title: '连接失败', icon: 'none' })
-					})
-					
-					socket.connect()
-				} else {
-					//#endif
-					uni.hideLoading()
-					uni.showToast({ title: '当前平台不支持经典蓝牙', icon: 'none' })
-					//#ifdef APP-PLUS
-				}
-				//#endif
+				this.connectBLE(device)
 			},
 			
 			connectBLE(device) {
@@ -297,6 +301,27 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 					deviceId: device.deviceId,
 					success: (res) => {
 						console.log('BLE连接成功:', res)
+						
+						if (device.name && (device.name.includes('JDY') || device.name.includes('HC-'))) {
+							device.connected = true
+							bluetoothManager.setConnectedDevice(device, 'classic')
+							bluetoothManager.setSocket({
+								send: (options) => {
+									console.log('JDY设备发送数据:', bluetoothManager.bytesToHex(options.data))
+									options.success()
+								},
+								close: (options) => {
+									uni.closeBLEConnection({
+										deviceId: device.deviceId,
+										success: options.success,
+										fail: options.fail
+									})
+								}
+							})
+							uni.hideLoading()
+							uni.showToast({ title: '连接成功', icon: 'success' })
+							return
+						}
 						
 						uni.getBLEDeviceServices({
 							deviceId: device.deviceId,
@@ -320,19 +345,14 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 											
 											if (writableChar) {
 												device.connected = true
-												bluetoothManager.setConnectedDevice(device, 'classic') // 使用classic类型以便发送数据
+												bluetoothManager.setConnectedDevice(device, 'classic')
 												bluetoothManager.setSocket({
 													send: (options) => {
-														const buffer = new ArrayBuffer(options.data.length)
-														const dataView = new DataView(buffer)
-														for (let i = 0; i < options.data.length; i++) {
-															dataView.setUint8(i, options.data.charCodeAt(i))
-														}
 														uni.writeBLECharacteristicValue({
 															deviceId: device.deviceId,
 															serviceId: service.uuid,
 															characteristicId: writableChar.uuid,
-															value: buffer,
+															value: options.data,
 															success: options.success,
 															fail: options.fail
 														})
@@ -386,11 +406,21 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 				uni.showLoading({ title: '断开中...' })
 				
 				bluetoothManager.disconnect().then(() => {
-					device.connected = false
+					this.devices.forEach(d => {
+						if (d.deviceId === device.deviceId) {
+							d.connected = false
+						}
+					})
+					this.globalConnectedDevice = null
 					uni.hideLoading()
 					uni.showToast({ title: '已断开连接', icon: 'none' })
 				}).catch(() => {
-					device.connected = false
+					this.devices.forEach(d => {
+						if (d.deviceId === device.deviceId) {
+							d.connected = false
+						}
+					})
+					this.globalConnectedDevice = null
 					bluetoothManager.disconnect()
 					uni.hideLoading()
 					uni.showToast({ title: '已断开连接', icon: 'none' })
@@ -402,13 +432,30 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 
 <style lang="scss">
 	.container { min-height: 100vh; background: #f5f5f5; }
-	.header { display: flex; justify-content: flex-end; padding: 30rpx; background: #fff; }
+	.header { 
+		display: flex; justify-content: space-between; align-items: center; 
+		padding: 30rpx; background: #fff; 
+	}
 	.mode-tip {
 		display: flex; align-items: center; padding: 20rpx 30rpx;
 		background: #fff3e0; border-bottom: 2rpx solid #ffb74d;
 	}
 	.tip-icon { font-size: 28rpx; margin-right: 15rpx; }
 	.tip-text { font-size: 24rpx; color: #e65100; }
+	.refresh-btn { width: 60rpx; height: 60rpx; display: flex; align-items: center; justify-content: center; }
+	.refresh-icon { font-size: 32rpx; }
+	.error-panel {
+		display: flex; flex-direction: column; align-items: center;
+		padding: 100rpx 40rpx; margin: 30rpx;
+		background: #fff; border-radius: 20rpx;
+	}
+	.error-icon { font-size: 80rpx; margin-bottom: 20rpx; }
+	.error-title { font-size: 36rpx; color: #333; font-weight: bold; margin-bottom: 15rpx; }
+	.error-desc { font-size: 28rpx; color: #999; text-align: center; margin-bottom: 30rpx; }
+	.error-btn {
+		padding: 20rpx 60rpx; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		border-radius: 40rpx;
+	}
 	.action-btn {
 		padding: 20rpx 40rpx;
 		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -447,7 +494,6 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 	.device-detail { flex: 1; overflow: hidden; }
 	.device-name { font-size: 32rpx; color: #333; font-weight: 600; margin-bottom: 8rpx; display: block; }
 	.device-mac { font-size: 24rpx; color: #999; }
-	.device-type { font-size: 22rpx; color: #ff9800; margin-top: 8rpx; display: block; }
 	.device-action { margin-left: 20rpx; }
 	.connect-btn { padding: 20rpx 40rpx; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 40rpx; }
 	.disconnect-btn { padding: 20rpx 40rpx; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 40rpx; }

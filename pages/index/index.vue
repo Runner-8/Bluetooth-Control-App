@@ -1,70 +1,55 @@
 c:\uni-app_Project\test01_7_22\pages\index\index.vue
 <template>
 	<view class="container">
-		<view class="header">
-			<text class="title">小车控制器</text>
-			<view class="connection-indicator" :class="{ connected: isConnected }">
-				<text class="indicator-dot"></text>
-				<text class="indicator-text">{{ isConnected ? '已连接' : '未连接' }}</text>
-			</view>
+		<view class="main-title">
+			<text class="title-text">小车控制器</text>
+			<text class="subtitle-text">智能蓝牙控制终端</text>
 		</view>
 		
-		<view class="button-list">
+		<view class="connection-status-bar" :class="{ connected: isConnected }">
+			<text class="status-icon">{{ isConnected ? '✅' : '🔴' }}</text>
+			<text class="status-text">{{ isConnected ? '已连接设备' : '未连接蓝牙' }}</text>
+		</view>
+		
+		<view class="button-grid">
 			<view class="btn-item" @click="goToBluetooth">
-				<view class="btn-icon blue-icon">
-					<text class="icon-text">BT</text>
+				<view class="btn-icon-wrap">
+					<text class="btn-icon">🔗</text>
 				</view>
-				<view class="btn-content">
-					<text class="btn-title">蓝牙连接</text>
-					<text class="btn-desc">连接小车蓝牙模块</text>
-				</view>
-				<view class="btn-arrow">
-					<text class="arrow-text">›</text>
-				</view>
+				<text class="btn-text">蓝牙连接</text>
 			</view>
 			
 			<view class="btn-item" @click="goToThreshold">
-				<view class="btn-icon orange-icon">
-					<text class="icon-text">SE</text>
+				<view class="btn-icon-wrap">
+					<text class="btn-icon">⚖️</text>
 				</view>
-				<view class="btn-content">
-					<text class="btn-title">阈值设置</text>
-					<text class="btn-desc">设置重量检测阈值</text>
-				</view>
-				<view class="btn-arrow">
-					<text class="arrow-text">›</text>
-				</view>
+				<text class="btn-text">阈值设置</text>
 			</view>
 			
-			<view class="btn-item auto-item" @click="toggleAutoCruise">
-				<view class="btn-icon" :class="autoCruise ? 'green-icon' : 'gray-icon'">
-					<text class="icon-text">{{ autoCruise ? 'ON' : 'OF' }}</text>
+			<view class="btn-item auto-btn" :class="{ active: autoCruiseEnabled }" @click="toggleAutoCruise">
+				<view class="btn-icon-wrap">
+					<text class="btn-icon">{{ autoCruiseEnabled ? '🔄' : '⏸️' }}</text>
 				</view>
-				<view class="btn-content">
-					<text class="btn-title">自动巡检</text>
-					<text class="btn-desc">{{ autoCruise ? '巡航中' : '点击开启' }}</text>
-				</view>
-				<view class="toggle-switch" :class="{ active: autoCruise }">
-					<view class="toggle-thumb"></view>
-				</view>
+				<text class="btn-text">{{ autoCruiseEnabled ? '关闭巡检' : '自动巡检' }}</text>
 			</view>
 			
 			<view class="btn-item" @click="goToControl">
-				<view class="btn-icon purple-icon">
-					<text class="icon-text">CT</text>
+				<view class="btn-icon-wrap">
+					<text class="btn-icon">🎮</text>
 				</view>
-				<view class="btn-content">
-					<text class="btn-title">小车控制</text>
-					<text class="btn-desc">手动控制小车移动</text>
-				</view>
-				<view class="btn-arrow">
-					<text class="arrow-text">›</text>
-				</view>
+				<text class="btn-text">小车控制</text>
 			</view>
 		</view>
 		
-		<view class="footer">
-			<text class="footer-text">蓝牙命令协议：f前进 b后退 l左转 r右转 s停止</text>
+		<view class="info-panel">
+			<view class="info-item">
+				<text class="info-icon">📡</text>
+				<text class="info-text">蓝牙连接状态: {{ isConnected ? '已连接' : '未连接' }}</text>
+			</view>
+			<view class="info-item">
+				<text class="info-icon">🚀</text>
+				<text class="info-text">自动巡检: {{ autoCruiseEnabled ? '开启' : '关闭' }}</text>
+			</view>
 		</view>
 	</view>
 </template>
@@ -76,7 +61,7 @@ c:\uni-app_Project\test01_7_22\pages\index\index.vue
 		data() {
 			return {
 				isConnected: false,
-				autoCruise: false
+				autoCruiseEnabled: false
 			}
 		},
 		onLoad() {
@@ -92,49 +77,38 @@ c:\uni-app_Project\test01_7_22\pages\index\index.vue
 			},
 			
 			goToBluetooth() {
-				uni.navigateTo({
-					url: '/pages/bluetooth/bluetooth'
-				})
+				uni.navigateTo({ url: '/pages/bluetooth/bluetooth' })
 			},
 			
 			goToThreshold() {
-				uni.navigateTo({
-					url: '/pages/threshold/threshold'
-				})
+				uni.navigateTo({ url: '/pages/threshold/threshold' })
 			},
 			
 			goToControl() {
-				uni.navigateTo({
-					url: '/pages/control/control'
-				})
+				uni.navigateTo({ url: '/pages/control/control' })
 			},
 			
 			toggleAutoCruise() {
-				this.autoCruise = !this.autoCruise
-				
 				if (!this.isConnected) {
-					uni.showToast({
-						title: '请先连接蓝牙',
-						icon: 'none'
-					})
-					this.autoCruise = false
+					uni.showToast({ title: '请先连接蓝牙', icon: 'none' })
 					return
 				}
 				
-				// 发送自动巡航命令
-				const cmd = this.autoCruise ? 'c1' : 'c0'
-				bluetoothManager.sendData(cmd).then(() => {
-					uni.showToast({
-						title: this.autoCruise ? '已开启自动巡航' : '已关闭自动巡航',
-						icon: 'success'
+				const newValue = !this.autoCruiseEnabled
+				
+				uni.showLoading({ title: newValue ? '开启中...' : '关闭中...' })
+				
+				bluetoothManager.sendCommand('autoCruise', newValue).then(() => {
+					uni.hideLoading()
+					this.autoCruiseEnabled = newValue
+					uni.showToast({ 
+						title: newValue ? '自动巡检已开启' : '自动巡检已关闭', 
+						icon: 'none' 
 					})
 				}).catch((err) => {
-					console.error('发送失败:', err)
-					this.autoCruise = !this.autoCruise
-					uni.showToast({
-						title: '发送失败',
-						icon: 'none'
-					})
+					uni.hideLoading()
+					console.error('操作失败:', err)
+					uni.showToast({ title: '操作失败', icon: 'none' })
 				})
 			}
 		}
@@ -142,174 +116,51 @@ c:\uni-app_Project\test01_7_22\pages\index\index.vue
 </script>
 
 <style lang="scss">
-	.container {
-		min-height: 100vh;
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-		padding: 30rpx;
-		padding-top: calc(env(safe-area-inset-top) + 30rpx);
-		box-sizing: border-box;
-	}
+	.container { min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30rpx; }
+	.main-title { text-align: center; padding: 60rpx 0 40rpx; }
+	.title-text { font-size: 48rpx; color: #fff; font-weight: bold; display: block; margin-bottom: 15rpx; }
+	.subtitle-text { font-size: 28rpx; color: rgba(255,255,255,0.8); }
 	
-	.header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 50rpx;
+	.connection-status-bar {
+		display: flex; align-items: center; justify-content: center;
+		padding: 20rpx; background: rgba(255,255,255,0.2); border-radius: 40rpx;
+		margin-bottom: 40rpx;
+		&.connected { background: rgba(76, 175, 80, 0.3); }
 	}
+	.status-icon { font-size: 32rpx; margin-right: 15rpx; }
+	.status-text { font-size: 28rpx; color: #fff; }
 	
-	.title {
-		font-size: 48rpx;
-		font-weight: bold;
-		color: #fff;
+	.button-grid {
+		display: grid; grid-template-columns: repeat(2, 1fr); gap: 30rpx;
+		margin-bottom: 40rpx;
 	}
-	
-	.connection-indicator {
-		display: flex;
-		align-items: center;
-		padding: 15rpx 25rpx;
-		background: rgba(255,255,255,0.2);
-		border-radius: 40rpx;
-		
-		&.connected {
-			background: rgba(76, 175, 80, 0.8);
-		}
-	}
-	
-	.indicator-dot {
-		width: 16rpx;
-		height: 16rpx;
-		background: #fff;
-		border-radius: 50%;
-		margin-right: 10rpx;
-	}
-	
-	.indicator-text {
-		font-size: 26rpx;
-		color: #fff;
-		font-weight: 600;
-	}
-	
-	.button-list {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		padding: 0 30rpx;
-	}
-	
 	.btn-item {
-		display: flex;
-		align-items: center;
-		width: 100%;
-		max-width: 600rpx;
-		background: rgba(255,255,255,0.95);
-		border-radius: 24rpx;
-		padding: 35rpx 30rpx;
-		margin-bottom: 25rpx;
-		box-shadow: 0 8rpx 24rpx rgba(0,0,0,0.15);
-		
-		&:active {
-			transform: scale(0.98);
-		}
+		background: rgba(255,255,255,0.95); border-radius: 24rpx;
+		padding: 40rpx 30rpx; display: flex; flex-direction: column;
+		align-items: center; box-shadow: 0 8rpx 24rpx rgba(0,0,0,0.1);
+		transition: all 0.3s ease;
+		&:active { transform: scale(0.96); }
 	}
-	
-	.btn-icon {
-		width: 80rpx;
-		height: 80rpx;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		margin-right: 25rpx;
+	.btn-icon-wrap {
+		width: 100rpx; height: 100rpx; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		border-radius: 50%; display: flex; align-items: center; justify-content: center;
+		margin-bottom: 20rpx;
 	}
-	
-	.blue-icon {
-		background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-	}
-	
-	.orange-icon {
-		background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-	}
-	
-	.green-icon {
+	.auto-btn.active .btn-icon-wrap {
 		background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
 	}
+	.btn-icon { font-size: 48rpx; }
+	.btn-text { font-size: 30rpx; color: #333; font-weight: 600; }
 	
-	.gray-icon {
-		background: #ccc;
+	.info-panel {
+		background: rgba(255,255,255,0.95); border-radius: 24rpx;
+		padding: 30rpx; box-shadow: 0 8rpx 24rpx rgba(0,0,0,0.1);
 	}
-	
-	.purple-icon {
-		background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+	.info-item {
+		display: flex; align-items: center; padding: 15rpx 0;
+		border-bottom: 1rpx solid #f0f0f0;
+		&:last-child { border-bottom: none; }
 	}
-	
-	.icon-text {
-		font-size: 24rpx;
-		color: #fff;
-		font-weight: bold;
-	}
-	
-	.btn-content {
-		flex: 1;
-	}
-	
-	.btn-title {
-		font-size: 32rpx;
-		color: #333;
-		font-weight: 600;
-		display: block;
-		margin-bottom: 8rpx;
-	}
-	
-	.btn-desc {
-		font-size: 24rpx;
-		color: #999;
-	}
-	
-	.btn-arrow {
-		margin-left: 20rpx;
-	}
-	
-	.arrow-text {
-		font-size: 40rpx;
-		color: #ccc;
-	}
-	
-	.toggle-switch {
-		width: 100rpx;
-		height: 56rpx;
-		background: #ccc;
-		border-radius: 28rpx;
-		position: relative;
-		transition: all 0.3s ease;
-		
-		&.active {
-			background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-		}
-	}
-	
-	.toggle-thumb {
-		width: 52rpx;
-		height: 52rpx;
-		background: #fff;
-		border-radius: 50%;
-		position: absolute;
-		top: 2rpx;
-		left: 2rpx;
-		transition: all 0.3s ease;
-		box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.2);
-		
-		.toggle-switch.active & {
-			left: 46rpx;
-		}
-	}
-	
-	.footer {
-		text-align: center;
-		padding: 40rpx 0;
-	}
-	
-	.footer-text {
-		font-size: 22rpx;
-		color: rgba(255,255,255,0.7);
-	}
+	.info-icon { font-size: 28rpx; margin-right: 15rpx; }
+	.info-text { font-size: 28rpx; color: #666; }
 </style>

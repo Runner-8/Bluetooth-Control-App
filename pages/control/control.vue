@@ -14,22 +14,22 @@ c:\uni-app_Project\test01_7_22\pages\control\control.vue
 		
 		<view class="control-panel">
 			<view class="left-panel">
-				<view class="control-btn btn-up" @touchstart="sendCommand('f')" @touchend="sendCommand('s')">
+				<view class="control-btn btn-up" @touchstart="sendForward" @touchend="sendStop">
 					<text class="btn-icon">↑</text>
 					<text class="btn-text">前进</text>
 				</view>
-				<view class="control-btn btn-down" @touchstart="sendCommand('b')" @touchend="sendCommand('s')">
+				<view class="control-btn btn-down" @touchstart="sendBackward" @touchend="sendStop">
 					<text class="btn-icon">↓</text>
 					<text class="btn-text">后退</text>
 				</view>
 			</view>
 			
 			<view class="right-panel">
-				<view class="control-btn btn-left" @touchstart="sendCommand('l')" @touchend="sendCommand('s')">
+				<view class="control-btn btn-left" @touchstart="sendLeft" @touchend="sendStop">
 					<text class="btn-icon">←</text>
 					<text class="btn-text">左转</text>
 				</view>
-				<view class="control-btn btn-right" @touchstart="sendCommand('r')" @touchend="sendCommand('s')">
+				<view class="control-btn btn-right" @touchstart="sendRight" @touchend="sendStop">
 					<text class="btn-icon">→</text>
 					<text class="btn-text">右转</text>
 				</view>
@@ -50,8 +50,7 @@ c:\uni-app_Project\test01_7_22\pages\control\control.vue
 		data() {
 			return {
 				currentStatus: '停止',
-				isConnected: false,
-				isSending: false // 防止重复发送
+				isConnected: false
 			}
 		},
 		onLoad() {
@@ -66,17 +65,38 @@ c:\uni-app_Project\test01_7_22\pages\control\control.vue
 				this.isConnected = isConnected
 			},
 			
-			sendCommand(cmd) {
+			sendForward() {
+				this.currentStatus = '前进'
+				this.sendCmd('forward')
+			},
+			
+			sendBackward() {
+				this.currentStatus = '后退'
+				this.sendCmd('backward')
+			},
+			
+			sendLeft() {
+				this.currentStatus = '左转'
+				this.sendCmd('left')
+			},
+			
+			sendRight() {
+				this.currentStatus = '右转'
+				this.sendCmd('right')
+			},
+			
+			sendStop() {
+				this.currentStatus = '停止'
+				this.sendCmd('stop')
+			},
+			
+			sendCmd(cmd) {
 				if (!this.isConnected) {
 					uni.showToast({ title: '请先连接蓝牙', icon: 'none' })
 					return
 				}
 				
-				const statusMap = { 'f': '前进', 'b': '后退', 'l': '左转', 'r': '右转', 's': '停止' }
-				this.currentStatus = statusMap[cmd] || cmd
-				
-				// 发送命令（单个字符）
-				bluetoothManager.sendData(cmd).then(() => {
+				bluetoothManager.sendCommand(cmd).then(() => {
 					console.log('命令发送成功:', cmd)
 				}).catch((err) => {
 					console.error('命令发送失败:', err)
