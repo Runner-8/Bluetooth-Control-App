@@ -33,11 +33,25 @@ c:\uni-app_Project\test01_7_22\pages\index\index.vue
 				<text class="btn-text">{{ autoCruiseEnabled ? '关闭巡检' : '自动巡检' }}</text>
 			</view>
 			
+			<view class="btn-item uv-btn" :class="{ active: uvLightEnabled }" @click="toggleUVLight">
+				<view class="btn-icon-wrap">
+					<text class="btn-icon">{{ uvLightEnabled ? '🟣' : '⬜' }}</text>
+				</view>
+				<text class="btn-text">{{ uvLightEnabled ? '关闭紫外' : '紫外线' }}</text>
+			</view>
+			
 			<view class="btn-item" @click="goToControl">
 				<view class="btn-icon-wrap">
 					<text class="btn-icon">🎮</text>
 				</view>
 				<text class="btn-text">小车控制</text>
+			</view>
+			
+			<view class="btn-item auto-move-btn" :class="{ active: autoMoveEnabled }" @click="toggleAutoMove">
+				<view class="btn-icon-wrap">
+					<text class="btn-icon">{{ autoMoveEnabled ? '🚗' : '🚙' }}</text>
+				</view>
+				<text class="btn-text">{{ autoMoveEnabled ? '关闭自动' : '自动移动' }}</text>
 			</view>
 		</view>
 		
@@ -50,6 +64,14 @@ c:\uni-app_Project\test01_7_22\pages\index\index.vue
 				<text class="info-icon">🚀</text>
 				<text class="info-text">自动巡检: {{ autoCruiseEnabled ? '开启' : '关闭' }}</text>
 			</view>
+			<view class="info-item">
+				<text class="info-icon">🟣</text>
+				<text class="info-text">紫外线灯: {{ uvLightEnabled ? '开启' : '关闭' }}</text>
+			</view>
+			<view class="info-item">
+				<text class="info-icon">🚗</text>
+				<text class="info-text">自动移动: {{ autoMoveEnabled ? '开启' : '关闭' }}</text>
+			</view>
 		</view>
 	</view>
 </template>
@@ -61,7 +83,9 @@ c:\uni-app_Project\test01_7_22\pages\index\index.vue
 		data() {
 			return {
 				isConnected: false,
-				autoCruiseEnabled: false
+				autoCruiseEnabled: false,
+				uvLightEnabled: false,
+				autoMoveEnabled: false  // 新增：自动移动状态
 			}
 		},
 		onLoad() {
@@ -110,6 +134,55 @@ c:\uni-app_Project\test01_7_22\pages\index\index.vue
 					console.error('操作失败:', err)
 					uni.showToast({ title: '操作失败', icon: 'none' })
 				})
+			},
+			
+			toggleUVLight() {
+				if (!this.isConnected) {
+					uni.showToast({ title: '请先连接蓝牙', icon: 'none' })
+					return
+				}
+				
+				const newValue = !this.uvLightEnabled
+				
+				uni.showLoading({ title: newValue ? '开启中...' : '关闭中...' })
+				
+				bluetoothManager.sendCommand('uvLight', newValue).then(() => {
+					uni.hideLoading()
+					this.uvLightEnabled = newValue
+					uni.showToast({ 
+						title: newValue ? '紫外线灯已开启' : '紫外线灯已关闭', 
+						icon: 'none' 
+					})
+				}).catch((err) => {
+					uni.hideLoading()
+					console.error('操作失败:', err)
+					uni.showToast({ title: '操作失败', icon: 'none' })
+				})
+			},
+			
+			// 新增：自动移动控制
+			toggleAutoMove() {
+				if (!this.isConnected) {
+					uni.showToast({ title: '请先连接蓝牙', icon: 'none' })
+					return
+				}
+				
+				const newValue = !this.autoMoveEnabled
+				
+				uni.showLoading({ title: newValue ? '开启中...' : '关闭中...' })
+				
+				bluetoothManager.sendCommand('autoMove', newValue).then(() => {
+					uni.hideLoading()
+					this.autoMoveEnabled = newValue
+					uni.showToast({ 
+						title: newValue ? '自动移动已开启' : '自动移动已关闭', 
+						icon: 'none' 
+					})
+				}).catch((err) => {
+					uni.hideLoading()
+					console.error('操作失败:', err)
+					uni.showToast({ title: '操作失败', icon: 'none' })
+				})
 			}
 		}
 	}
@@ -148,6 +221,12 @@ c:\uni-app_Project\test01_7_22\pages\index\index.vue
 	}
 	.auto-btn.active .btn-icon-wrap {
 		background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+	}
+	.uv-btn.active .btn-icon-wrap {
+		background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+	}
+	.auto-move-btn.active .btn-icon-wrap {
+		background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
 	}
 	.btn-icon { font-size: 48rpx; }
 	.btn-text { font-size: 30rpx; color: #333; font-weight: 600; }

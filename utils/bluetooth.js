@@ -8,6 +8,9 @@ class BluetoothManager {
 		this.connectionType = null
 		this.sendQueue = []
 		this.isSending = false
+		this.connectionChecker = null
+		this.lastSendTime = 0
+		this.MAX_IDLE_TIME = 5000
 	}
 	
 	setConnectedDevice(device, type = 'classic') {
@@ -15,6 +18,12 @@ class BluetoothManager {
 		this.isConnected = device !== null
 		this.connectionType = type
 		this.notifyListeners()
+		
+		if (this.isConnected) {
+			this.startConnectionChecker()
+		} else {
+			this.stopConnectionChecker()
+		}
 	}
 	
 	setSocket(socket) {
@@ -47,6 +56,55 @@ class BluetoothManager {
 		})
 	}
 	
+	startConnectionChecker() {
+		this.stopConnectionChecker()
+		
+		this.connectionChecker = setInterval(() => {
+			this.checkConnectionStatus()
+		}, 2000)
+	}
+	
+	stopConnectionChecker() {
+		if (this.connectionChecker) {
+			clearInterval(this.connectionChecker)
+			this.connectionChecker = null
+		}
+	}
+	
+	checkConnectionStatus() {
+		if (!this.isConnected || !this.connectedDevice) {
+			this.stopConnectionChecker()
+			return
+		}
+		
+		const now = Date.now()
+		
+		if (now - this.lastSendTime > this.MAX_IDLE_TIME) {
+			this.tryPingConnection()
+		}
+	}
+	
+	tryPingConnection() {
+		if (this.connectionType === 'classic' && this.socket) {
+			try {
+				if (typeof this.socket.readyState !== 'undefined' && this.socket.readyState !== 1) {
+					console.log('检测到连接断开')
+					this.forceDisconnect()
+				}
+			} catch (e) {
+				console.error('连接检测失败:', e)
+				this.forceDisconnect()
+			}
+		}
+	}
+	
+	forceDisconnect() {
+		if (!this.isConnected) return
+		
+		console.log('强制断开连接')
+		this.disconnect().catch(() => {})
+	}
+	
 	sendData(data) {
 		return new Promise((resolve, reject) => {
 			if (!this.connectedDevice) {
@@ -54,10 +112,10 @@ class BluetoothManager {
 				return
 			}
 			
-			// 确保数据是 ArrayBuffer
+			this.lastSendTime = Date.now()
+			
 			let sendData = data
 			if (!(data instanceof ArrayBuffer)) {
-				// 如果是字符串，转换为 ArrayBuffer
 				if (typeof data === 'string') {
 					const buffer = new ArrayBuffer(data.length)
 					const view = new DataView(buffer)
@@ -66,7 +124,6 @@ class BluetoothManager {
 					}
 					sendData = buffer
 				} else if (Array.isArray(data)) {
-					// 如果是数组，转换为 ArrayBuffer
 					const buffer = new ArrayBuffer(data.length)
 					const view = new DataView(buffer)
 					for (let i = 0; i < data.length; i++) {
@@ -102,6 +159,11 @@ class BluetoothManager {
 			item.resolve()
 		} catch (err) {
 			console.error('发送失败:', err)
+			
+			if (err.message && err.message.includes('fail')) {
+				this.forceDisconnect()
+			}
+			
 			item.reject(err)
 		}
 		
@@ -174,7 +236,9 @@ class BluetoothManager {
 			stop: 0x05,
 			autoCruise: 0x06,
 			setThreshold: 0x07,
-			queryStatus: 0x08
+			uvLight: 0x08,
+			autoMove: 0x09,      // 新增：自动移动开关
+			queryStatus: 0x0A     // 调整：查询状态改为0x0A
 		}
 		
 		const cmd = cmdMap[cmdType]
@@ -188,6 +252,10 @@ class BluetoothManager {
 			frameData = this.floatToBytes(data)
 		} else if (cmdType === 'autoCruise' && typeof data === 'boolean') {
 			frameData = [data ? 0x01 : 0x00]
+		} else if (cmdType === 'uvLight' && typeof data === 'boolean') {
+			frameData = [data ? 0x01 : 0x00]
+		} else if (cmdType === 'autoMove' && typeof data === 'boolean') {
+			frameData = [data ? 0x01 : 0x00]
 		}
 		
 		const frame = this.buildFrame(cmd, frameData)
@@ -196,13 +264,37 @@ class BluetoothManager {
 	
 	disconnect() {
 		return new Promise((resolve) => {
+			this.stopConnectionChecker()
 			this.sendQueue = []
 			this.isSending = false
 			
 			if (this.connectionType === 'classic' && this.socket) {
-				this.socket.close({
-					success: () => { this.cleanup(); resolve() },
-					fail: () => { this.cleanup(); resolve() }
+				try {
+					this.socket.close({
+						success: () => {
+							this.cleanup()
+							resolve()
+						},
+						fail: () => {
+							this.cleanup()
+							resolve()
+						}
+					})
+				} catch (e) {
+					this.cleanup()
+					resolve()
+				}
+			} else if (this.connectionType === 'ble' && this.connectedDevice) {
+				uni.closeBLEConnection({
+					deviceId: this.connectedDevice.deviceId,
+					success: () => {
+						this.cleanup()
+						resolve()
+					},
+					fail: () => {
+						this.cleanup()
+						resolve()
+					}
 				})
 			} else {
 				this.cleanup()

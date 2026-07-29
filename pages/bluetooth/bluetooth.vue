@@ -53,7 +53,7 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 						<text class="btn-text">连接</text>
 					</view>
 					<view v-else class="disconnect-btn" @click="disconnectDevice(device)">
-						<text class="btn-text">断开</text>
+						<text class="btn-text">{{ disconnecting ? '断开中...' : '断开' }}</text>
 					</view>
 				</view>
 			</view>
@@ -78,7 +78,8 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 				globalConnectedDevice: null,
 				connectionType: null,
 				isAppMode: false,
-				bluetoothError: ''
+				bluetoothError: '',
+				disconnecting: false
 			}
 		},
 		onLoad() {
@@ -113,7 +114,6 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 				this.globalConnectedDevice = bluetoothManager.getConnectedDevice()
 				this.connectionType = bluetoothManager.getConnectionType()
 				
-				// 如果已有连接，确保已连接设备在列表中显示
 				if (this.globalConnectedDevice && !this.devices.some(d => d.deviceId === this.globalConnectedDevice.deviceId)) {
 					this.devices.unshift({
 						name: this.globalConnectedDevice.name,
@@ -122,7 +122,6 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 					})
 				}
 				
-				// 更新所有设备的连接状态
 				this.devices.forEach(device => {
 					device.connected = this.globalConnectedDevice && 
 						(device.deviceId === this.globalConnectedDevice.deviceId)
@@ -132,7 +131,13 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 			onConnectionChange(device, isConnected) {
 				this.globalConnectedDevice = device
 				this.connectionType = bluetoothManager.getConnectionType()
+				this.disconnecting = false
 				this.updateConnectionStatus()
+				
+				// 如果连接断开，显示提示
+				if (!isConnected && device) {
+					uni.showToast({ title: '连接已断开', icon: 'none', duration: 2000 })
+				}
 			},
 			
 			refreshDevices() {
@@ -172,7 +177,6 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 				this.devices = []
 				this.bluetoothError = ''
 				
-				// 如果已有连接，先添加已连接设备
 				if (this.globalConnectedDevice) {
 					this.devices.push({
 						name: this.globalConnectedDevice.name,
@@ -218,7 +222,6 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 			addDevice(device) {
 				const exists = this.devices.some(d => d.deviceId === device.deviceId)
 				if (exists) {
-					// 更新已存在设备的信息
 					this.devices.forEach(d => {
 						if (d.deviceId === device.deviceId) {
 							d.name = device.name
@@ -403,6 +406,9 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 			},
 			
 			disconnectDevice(device) {
+				if (this.disconnecting) return
+				
+				this.disconnecting = true
 				uni.showLoading({ title: '断开中...' })
 				
 				bluetoothManager.disconnect().then(() => {
@@ -412,6 +418,7 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 						}
 					})
 					this.globalConnectedDevice = null
+					this.disconnecting = false
 					uni.hideLoading()
 					uni.showToast({ title: '已断开连接', icon: 'none' })
 				}).catch(() => {
@@ -421,6 +428,7 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 						}
 					})
 					this.globalConnectedDevice = null
+					this.disconnecting = false
 					bluetoothManager.disconnect()
 					uni.hideLoading()
 					uni.showToast({ title: '已断开连接', icon: 'none' })

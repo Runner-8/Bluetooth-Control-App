@@ -12,33 +12,66 @@ c:\uni-app_Project\test01_7_22\pages\control\control.vue
 			</view>
 		</view>
 		
+		<view class="tips-panel">
+			<text class="tips-text">⚠️ 长按按钮控制小车移动 </text>
+			<text class="tips-hint" v-if="!isConnected">请先连接蓝牙设备</text>
+		</view>
+		
 		<view class="control-panel">
 			<view class="left-panel">
-				<view class="control-btn btn-up" @touchstart="sendForward" @touchend="sendStop">
+				<view 
+					class="control-btn btn-up" 
+					@touchstart="onTouchStart('f', $event)" 
+					@touchend="onTouchEnd"
+					@touchcancel="onTouchEnd"
+					@touchmove="onTouchMove"
+				>
 					<text class="btn-icon">↑</text>
 					<text class="btn-text">前进</text>
+					<view class="press-indicator" :class="{ active: pressing }"></view>
 				</view>
-				<view class="control-btn btn-down" @touchstart="sendBackward" @touchend="sendStop">
+				<view 
+					class="control-btn btn-down" 
+					@touchstart="onTouchStart('b', $event)" 
+					@touchend="onTouchEnd"
+					@touchcancel="onTouchEnd"
+					@touchmove="onTouchMove"
+				>
 					<text class="btn-icon">↓</text>
 					<text class="btn-text">后退</text>
+					<view class="press-indicator" :class="{ active: pressing }"></view>
 				</view>
 			</view>
 			
 			<view class="right-panel">
-				<view class="control-btn btn-left" @touchstart="sendLeft" @touchend="sendStop">
+				<view 
+					class="control-btn btn-left" 
+					@touchstart="onTouchStart('l', $event)" 
+					@touchend="onTouchEnd"
+					@touchcancel="onTouchEnd"
+					@touchmove="onTouchMove"
+				>
 					<text class="btn-icon">←</text>
 					<text class="btn-text">左转</text>
+					<view class="press-indicator" :class="{ active: pressing }"></view>
 				</view>
-				<view class="control-btn btn-right" @touchstart="sendRight" @touchend="sendStop">
+				<view 
+					class="control-btn btn-right" 
+					@touchstart="onTouchStart('r', $event)" 
+					@touchend="onTouchEnd"
+					@touchcancel="onTouchEnd"
+					@touchmove="onTouchMove"
+				>
 					<text class="btn-icon">→</text>
 					<text class="btn-text">右转</text>
+					<view class="press-indicator" :class="{ active: pressing }"></view>
 				</view>
 			</view>
 		</view>
 		
-		<view class="tips">
-			<text class="tips-text">按住按钮控制小车移动</text>
-			<text class="tips-hint" v-if="!isConnected">⚠️ 请先连接蓝牙设备</text>
+		<view class="stop-area" @touchstart="sendStopDirectly">
+			<text class="stop-icon">⏹️</text>
+			<text class="stop-text">点击停止</text>
 		</view>
 	</view>
 </template>
@@ -50,7 +83,13 @@ c:\uni-app_Project\test01_7_22\pages\control\control.vue
 		data() {
 			return {
 				currentStatus: '停止',
-				isConnected: false
+				isConnected: false,
+				pressing: false,
+				pressTimer: null,
+				pressStartTime: 0,
+				currentCmd: '',
+				isLongPress: false,
+				THRESHOLD: 300 // 长按阈值（毫秒）
 			}
 		},
 		onLoad() {
@@ -59,48 +98,96 @@ c:\uni-app_Project\test01_7_22\pages\control\control.vue
 		},
 		onUnload() {
 			bluetoothManager.removeListener(this.onConnectionChange)
+			this.clearTimer()
 		},
 		methods: {
 			onConnectionChange(device, isConnected) {
 				this.isConnected = isConnected
 			},
 			
-			sendForward() {
-				this.currentStatus = '前进'
-				this.sendCmd('forward')
+			clearTimer() {
+				if (this.pressTimer) {
+					clearTimeout(this.pressTimer)
+					this.pressTimer = null
+				}
 			},
 			
-			sendBackward() {
-				this.currentStatus = '后退'
-				this.sendCmd('backward')
-			},
-			
-			sendLeft() {
-				this.currentStatus = '左转'
-				this.sendCmd('left')
-			},
-			
-			sendRight() {
-				this.currentStatus = '右转'
-				this.sendCmd('right')
-			},
-			
-			sendStop() {
-				this.currentStatus = '停止'
-				this.sendCmd('stop')
-			},
-			
-			sendCmd(cmd) {
+			onTouchStart(cmd, event) {
 				if (!this.isConnected) {
 					uni.showToast({ title: '请先连接蓝牙', icon: 'none' })
 					return
 				}
 				
-				bluetoothManager.sendCommand(cmd).then(() => {
+				// 阻止默认行为，防止滚动
+				event.preventDefault()
+				
+				this.pressing = true
+				this.currentCmd = cmd
+				this.pressStartTime = Date.now()
+				this.isLongPress = false
+				
+				// 设置定时器，超过阈值才发送命令
+				this.pressTimer = setTimeout(() => {
+					this.sendCommand(cmd)
+					this.isLongPress = true
+				}, this.THRESHOLD)
+			},
+			
+			onTouchEnd() {
+				this.pressing = false
+				this.clearTimer()
+				
+				// 如果是长按触发的命令，松开时发送停止命令
+				if (this.isLongPress && this.currentCmd) {
+					this.sendStop()
+				}
+				
+				this.currentCmd = ''
+				this.isLongPress = false
+			},
+			
+			onTouchMove() {
+				// 触摸移动时不做处理，保持按住状态
+			},
+			
+			sendCommand(cmd) {
+				const statusMap = { 'f': '前进', 'b': '后退', 'l': '左转', 'r': '右转', 's': '停止' }
+				this.currentStatus = statusMap[cmd] || cmd
+				
+				bluetoothManager.sendCommand(this.getCmdType(cmd)).then(() => {
 					console.log('命令发送成功:', cmd)
 				}).catch((err) => {
 					console.error('命令发送失败:', err)
 				})
+			},
+			
+			sendStop() {
+				this.currentStatus = '停止'
+				
+				bluetoothManager.sendCommand('stop').then(() => {
+					console.log('停止命令发送成功')
+				}).catch((err) => {
+					console.error('停止命令发送失败:', err)
+				})
+			},
+			
+			sendStopDirectly() {
+				if (!this.isConnected) {
+					uni.showToast({ title: '请先连接蓝牙', icon: 'none' })
+					return
+				}
+				
+				this.sendStop()
+			},
+			
+			getCmdType(cmd) {
+				const cmdMap = {
+					'f': 'forward',
+					'b': 'backward',
+					'l': 'left',
+					'r': 'right'
+				}
+				return cmdMap[cmd] || cmd
 			}
 		}
 	}
@@ -115,7 +202,7 @@ c:\uni-app_Project\test01_7_22\pages\control\control.vue
 	.status-bar {
 		display: flex; justify-content: space-between; align-items: center;
 		background: rgba(255,255,255,0.1); border-radius: 20rpx; padding: 30rpx 40rpx;
-		margin-bottom: 60rpx;
+		margin-bottom: 20rpx;
 	}
 	.status-left { display: flex; flex-direction: column; }
 	.status-label { font-size: 28rpx; color: rgba(255,255,255,0.7); margin-bottom: 8rpx; }
@@ -128,13 +215,21 @@ c:\uni-app_Project\test01_7_22\pages\control\control.vue
 	.connection-icon { font-size: 32rpx; margin-bottom: 8rpx; }
 	.connection-text { font-size: 24rpx; color: #fff; }
 	
+	.tips-panel {
+		background: rgba(255, 193, 7, 0.2); border-radius: 16rpx; padding: 20rpx 30rpx;
+		margin-bottom: 30rpx; text-align: center;
+	}
+	.tips-text { font-size: 26rpx; color: #ffc107; display: block; }
+	.tips-hint { font-size: 24rpx; color: #ff9800; margin-top: 8rpx; }
+	
 	.control-panel { flex: 1; display: flex; justify-content: space-between; padding: 0 20rpx; }
 	.left-panel, .right-panel { display: flex; flex-direction: column; gap: 40rpx; }
 	.control-btn {
 		width: 180rpx; height: 180rpx; border-radius: 24rpx;
 		display: flex; flex-direction: column; align-items: center; justify-content: center;
 		transition: all 0.2s ease; box-shadow: 0 8rpx 24rpx rgba(0,0,0,0.3);
-		&:active { transform: scale(0.95); opacity: 0.8; }
+		position: relative; overflow: hidden;
+		&:active { transform: scale(0.95); }
 	}
 	.btn-up { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
 	.btn-down { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
@@ -142,8 +237,18 @@ c:\uni-app_Project\test01_7_22\pages\control\control.vue
 	.btn-right { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
 	.btn-icon { font-size: 56rpx; color: #fff; margin-bottom: 8rpx; }
 	.btn-text { font-size: 28rpx; color: #fff; font-weight: 600; }
+	.press-indicator {
+		position: absolute; bottom: 0; left: 0; right: 0; height: 0;
+		background: rgba(255,255,255,0.3);
+		transition: height 0.3s ease;
+		&.active { height: 100%; }
+	}
 	
-	.tips { text-align: center; padding: 30rpx 0; }
-	.tips-text { font-size: 26rpx; color: rgba(255,255,255,0.5); display: block; margin-bottom: 10rpx; }
-	.tips-hint { font-size: 24rpx; color: #ff9800; }
+	.stop-area {
+		display: flex; flex-direction: column; align-items: center;
+		padding: 30rpx; background: rgba(255,255,255,0.1);
+		border-radius: 20rpx; margin-top: 30rpx;
+	}
+	.stop-icon { font-size: 64rpx; margin-bottom: 10rpx; }
+	.stop-text { font-size: 28rpx; color: rgba(255,255,255,0.8); }
 </style>
