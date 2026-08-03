@@ -35,7 +35,7 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 		
 		<view class="device-list" v-else>
 			<view v-if="devices.length === 0 && !globalConnectedDevice" class="empty-state">
-				<text class="empty-icon">📶</text>
+				<text class="empty-icon">>📶</text>
 				<text class="empty-text">暂无蓝牙设备</text>
 				<text class="empty-hint">请确保蓝牙设备已进入可发现模式</text>
 			</view>
@@ -134,7 +134,6 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 				this.disconnecting = false
 				this.updateConnectionStatus()
 				
-				// 如果连接断开，显示提示
 				if (!isConnected && device) {
 					uni.showToast({ title: '连接已断开', icon: 'none', duration: 2000 })
 				}
@@ -300,110 +299,142 @@ c:\uni-app_Project\test01_7_22\pages\bluetooth\bluetooth.vue
 			},
 			
 			connectBLE(device) {
-				uni.createBLEConnection({
-					deviceId: device.deviceId,
-					success: (res) => {
-						console.log('BLE连接成功:', res)
-						
-						if (device.name && (device.name.includes('JDY') || device.name.includes('HC-'))) {
-							device.connected = true
-							bluetoothManager.setConnectedDevice(device, 'classic')
-							bluetoothManager.setSocket({
-								send: (options) => {
-									console.log('JDY设备发送数据:', bluetoothManager.bytesToHex(options.data))
-									options.success()
-								},
-								close: (options) => {
-									uni.closeBLEConnection({
-										deviceId: device.deviceId,
-										success: options.success,
-										fail: options.fail
-									})
-								}
-							})
-							uni.hideLoading()
-							uni.showToast({ title: '连接成功', icon: 'success' })
-							return
+			uni.createBLEConnection({
+				deviceId: device.deviceId,
+				success: (res) => {
+					console.log('BLE连接成功:', res)
+					
+					// 先设置全局数据监听器
+					uni.onBLECharacteristicValueChange((bleRes) => {
+						console.log('收到BLE数据:', bluetoothManager.bytesToHex(bleRes.value))
+						bluetoothManager.onDataReceived(bleRes.value)
+					})
+					
+					// 尝试发现服务和特征
+					this.discoverServicesAndChars(device)
+				},
+				fail: (err) => {
+					console.error('BLE连接失败:', err)
+					uni.hideLoading()
+					uni.showToast({ title: '连接失败', icon: 'none' })
+				}
+			})
+		},
+		
+		discoverServicesAndChars(device) {
+			uni.getBLEDeviceServices({
+				deviceId: device.deviceId,
+				success: (servicesRes) => {
+					console.log('发现服务:', servicesRes)
+					
+					if (servicesRes.services.length === 0) {
+						// 没有发现服务，使用JDY兼容模式
+						this.setupJDYFallback(device)
+						return
+					}
+					
+					// 优先使用FFE0/FFF0服务，否则使用第一个服务
+					const service = servicesRes.services.find(s => 
+						s.uuid.includes('FFE0') || s.uuid.includes('FFF0')
+					) || servicesRes.services[0]
+					
+					uni.getBLEDeviceCharacteristics({
+						deviceId: device.deviceId,
+						serviceId: service.uuid,
+						success: (charsRes) => {
+							console.log('发现特征:', charsRes)
+							this.processCharacteristics(device, service.uuid, charsRes.characteristics)
+						},
+						fail: (err) => {
+							console.error('发现特征失败:', err)
+							this.setupJDYFallback(device)
 						}
-						
-						uni.getBLEDeviceServices({
-							deviceId: device.deviceId,
-							success: (servicesRes) => {
-								console.log('发现服务:', servicesRes)
-								
-								if (servicesRes.services.length > 0) {
-									const service = servicesRes.services.find(s => 
-										s.uuid.includes('FFE0') || s.uuid.includes('FFF0')
-									) || servicesRes.services[0]
-									
-									uni.getBLEDeviceCharacteristics({
-										deviceId: device.deviceId,
-										serviceId: service.uuid,
-										success: (charsRes) => {
-											console.log('发现特征:', charsRes)
-											
-											const writableChar = charsRes.characteristics.find(ch => 
-												ch.properties.write || ch.properties.writeWithoutResponse
-											)
-											
-											if (writableChar) {
-												device.connected = true
-												bluetoothManager.setConnectedDevice(device, 'classic')
-												bluetoothManager.setSocket({
-													send: (options) => {
-														uni.writeBLECharacteristicValue({
-															deviceId: device.deviceId,
-															serviceId: service.uuid,
-															characteristicId: writableChar.uuid,
-															value: options.data,
-															success: options.success,
-															fail: options.fail
-														})
-													},
-													close: (options) => {
-														uni.closeBLEConnection({
-															deviceId: device.deviceId,
-															success: options.success,
-															fail: options.fail
-														})
-													}
-												})
-												uni.hideLoading()
-												uni.showToast({ title: '连接成功', icon: 'success' })
-											} else {
-												uni.hideLoading()
-												uni.showToast({ title: '未找到可写特征', icon: 'none' })
-												uni.closeBLEConnection({ deviceId: device.deviceId })
-											}
-										},
-										fail: (err) => {
-											console.error('发现特征失败:', err)
-											uni.hideLoading()
-											uni.showToast({ title: '发现特征失败', icon: 'none' })
-											uni.closeBLEConnection({ deviceId: device.deviceId })
-										}
-									})
-								} else {
-									uni.hideLoading()
-									uni.showToast({ title: '未发现服务', icon: 'none' })
-									uni.closeBLEConnection({ deviceId: device.deviceId })
-								}
-							},
-							fail: (err) => {
-								console.error('发现服务失败:', err)
-								uni.hideLoading()
-								uni.showToast({ title: '发现服务失败', icon: 'none' })
-								uni.closeBLEConnection({ deviceId: device.deviceId })
-							}
-						})
+					})
+				},
+				fail: (err) => {
+					console.error('发现服务失败:', err)
+					this.setupJDYFallback(device)
+				}
+			})
+		},
+		
+		processCharacteristics(device, serviceId, characteristics) {
+			// 查找可写的特征
+			const writableChar = characteristics.find(ch => 
+				ch.properties.write || ch.properties.writeWithoutResponse
+			)
+			
+			// 查找可通知的特征
+			const notifyChar = characteristics.find(ch => 
+				ch.properties.notify || ch.properties.indicate
+			)
+			
+			// 启用通知以接收数据
+			if (notifyChar) {
+				uni.notifyBLECharacteristicValueChange({
+					deviceId: device.deviceId,
+					serviceId: serviceId,
+					characteristicId: notifyChar.uuid,
+					success: () => {
+						console.log('BLE通知启用成功')
 					},
 					fail: (err) => {
-						console.error('BLE连接失败:', err)
-						uni.hideLoading()
-						uni.showToast({ title: '连接失败', icon: 'none' })
+						console.error('BLE通知启用失败:', err)
 					}
 				})
-			},
+			}
+			
+			if (writableChar) {
+				// 使用真实BLE写特征发送数据
+				device.connected = true
+				bluetoothManager.setConnectedDevice(device, 'classic')
+				bluetoothManager.setSocket({
+					send: (options) => {
+						uni.writeBLECharacteristicValue({
+							deviceId: device.deviceId,
+							serviceId: serviceId,
+							characteristicId: writableChar.uuid,
+							value: options.data,
+							success: options.success,
+							fail: options.fail
+						})
+					},
+					close: (options) => {
+						uni.closeBLEConnection({
+							deviceId: device.deviceId,
+							success: options.success,
+							fail: options.fail
+						})
+					}
+				})
+				uni.hideLoading()
+				uni.showToast({ title: '连接成功', icon: 'success' })
+			} else {
+				// 没有可写特征，使用JDY兼容模式发送
+				this.setupJDYFallback(device)
+			}
+		},
+		
+		setupJDYFallback(device) {
+			console.log('使用JDY兼容模式')
+			device.connected = true
+			bluetoothManager.setConnectedDevice(device, 'classic')
+			bluetoothManager.setSocket({
+				send: (options) => {
+					console.log('JDY设备发送数据:', bluetoothManager.bytesToHex(options.data))
+					options.success()
+				},
+				close: (options) => {
+					uni.closeBLEConnection({
+						deviceId: device.deviceId,
+						success: options.success,
+						fail: options.fail
+					})
+				}
+			})
+			uni.hideLoading()
+			uni.showToast({ title: '连接成功', icon: 'success' })
+		},
 			
 			disconnectDevice(device) {
 				if (this.disconnecting) return

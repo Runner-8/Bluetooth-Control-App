@@ -5,12 +5,14 @@ class BluetoothManager {
 		this.socket = null
 		this.isConnected = false
 		this.listeners = []
+		this.dataListeners = [] // 数据监听者
 		this.connectionType = null
 		this.sendQueue = []
 		this.isSending = false
 		this.connectionChecker = null
 		this.lastSendTime = 0
 		this.MAX_IDLE_TIME = 5000
+		this.receiveBuffer = [] // 接收缓冲区
 	}
 	
 	setConnectedDevice(device, type = 'classic') {
@@ -21,6 +23,7 @@ class BluetoothManager {
 		
 		if (this.isConnected) {
 			this.startConnectionChecker()
+			this.setupReceiveHandler()
 		} else {
 			this.stopConnectionChecker()
 		}
@@ -28,6 +31,118 @@ class BluetoothManager {
 	
 	setSocket(socket) {
 		this.socket = socket
+	}
+	
+	setupReceiveHandler() {
+		if (this.socket && this.socket.onMessage) {
+			this.socket.onMessage((res) => {
+				this.onDataReceived(res.data)
+			})
+		}
+	}
+	
+	onDataReceived(data) {
+		// 将数据转换为字节数组
+		let bytes = []
+		if (data instanceof ArrayBuffer) {
+			bytes = Array.from(new Uint8Array(data))
+		} else if (data instanceof Uint8Array) {
+			bytes = Array.from(data)
+		} else if (Array.isArray(data)) {
+			bytes = data
+		}
+		
+		// 添加到接收缓冲区
+		this.receiveBuffer = this.receiveBuffer.concat(bytes)
+		
+		// 尝试解析数据帧
+		this.parseFrames()
+	}
+	
+	parseFrames() {
+		while (this.receiveBuffer.length >= 5) {
+			// 查找帧头 0xAA
+			const headerIndex = this.receiveBuffer.indexOf(0xAA)
+			if (headerIndex === -1) {
+				this.receiveBuffer = []
+				break
+			}
+			
+			// 如果帧头不是第一个字节，丢弃前面的数据
+			if (headerIndex > 0) {
+				this.receiveBuffer = this.receiveBuffer.slice(headerIndex)
+			}
+			
+			// 检查最小帧长度（头+长度+命令+校验+尾 = 5字节）
+			const minLength = 5
+			if (this.receiveBuffer.length < minLength) break
+			
+			const length = this.receiveBuffer[1]
+			// 注意：length字段已经包含命令+数据+校验的总字节数
+			// 帧总长度 = 1(头) + 1(长度字节) + length + 1(尾) = 3 + length
+			const frameLength = 1 + 1 + length + 1
+			
+			// 检查是否完整接收
+			if (this.receiveBuffer.length < frameLength) break
+			
+			// 验证帧尾
+			if (this.receiveBuffer[frameLength - 1] !== 0x55) {
+				this.receiveBuffer = this.receiveBuffer.slice(1)
+				continue
+			}
+			
+			// 验证校验：校验 = length ^ cmd ^ data[0] ^ data[1] ^ ...
+			let checksum = this.receiveBuffer[1]
+			// 从索引2(命令)到索引frameLength-3(最后一个数据字节)
+			for (let i = 2; i < frameLength - 2; i++) {
+				checksum ^= this.receiveBuffer[i]
+			}
+			
+			if (checksum !== this.receiveBuffer[frameLength - 2]) {
+				this.receiveBuffer = this.receiveBuffer.slice(1)
+				continue
+			}
+			
+			// 提取命令和数据
+			const cmd = this.receiveBuffer[2]
+			const dataBytes = this.receiveBuffer.slice(3, frameLength - 2)
+			
+			console.log('解析到数据帧 - 命令:', cmd, '数据:', this.bytesToHex(dataBytes))
+			
+			// 通知数据监听者
+			this.notifyDataListeners(cmd, dataBytes)
+			
+			// 移除已处理的帧
+			this.receiveBuffer = this.receiveBuffer.slice(frameLength)
+		}
+	}
+	
+	notifyDataListeners(cmd, data) {
+		this.dataListeners.forEach(listener => {
+			try {
+				listener(cmd, data)
+			} catch (e) {
+				console.error('数据监听者执行失败:', e)
+			}
+		})
+	}
+	
+	addDataListener(listener) {
+		this.dataListeners.push(listener)
+	}
+	
+	removeDataListener(listener) {
+		this.dataListeners = this.dataListeners.filter(l => l !== listener)
+	}
+	
+	parseFloatFromBytes(bytes) {
+		if (bytes.length < 4) return 0
+		const buffer = new ArrayBuffer(4)
+		const view = new DataView(buffer)
+		for (let i = 0; i < 4; i++) {
+			view.setUint8(i, bytes[i])
+		}
+		return view.getFloat32(0, true) // 小端序
 	}
 	
 	getConnectedDevice() {
@@ -237,8 +352,8 @@ class BluetoothManager {
 			autoCruise: 0x06,
 			setThreshold: 0x07,
 			uvLight: 0x08,
-			autoMove: 0x09,      // 新增：自动移动开关
-			queryStatus: 0x0A     // 调整：查询状态改为0x0A
+			autoMove: 0x09,
+			queryStatus: 0x0A
 		}
 		
 		const cmd = cmdMap[cmdType]
@@ -308,6 +423,7 @@ class BluetoothManager {
 		this.connectedDevice = null
 		this.isConnected = false
 		this.connectionType = null
+		this.receiveBuffer = []
 		this.notifyListeners()
 	}
 }
